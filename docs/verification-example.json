@@ -1,0 +1,18 @@
+{
+  "passed": true,
+  "marker_order_id": 20286,
+  "kafka_operations": [
+    "c",
+    "u",
+    "d",
+    "tombstone"
+  ],
+  "s3_operations": [
+    "c",
+    "u",
+    "d",
+    "tombstone"
+  ],
+  "snapshot_events_in_s3": 20124,
+  "s3_files_checked": 26
+}

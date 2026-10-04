@@ -1,0 +1,21 @@
+{
+  "live_orders": 20635,
+  "events": 21132,
+  "duplicates_skipped": 0,
+  "operations": {
+    "r": 20124,
+    "c": 561,
+    "u": 347,
+    "d": 50,
+    "tombstone": 50
+  },
+  "high_watermarks": {
+    "0": 21131
+  },
+  "comparison": {
+    "matched": true,
+    "missing": [],
+    "extra": [],
+    "mismatched": []
+  }
+}

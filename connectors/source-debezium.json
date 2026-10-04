@@ -1,0 +1,30 @@
+{
+  "name": "shop-source",
+  "config": {
+    "connector.class": "io.debezium.connector.postgresql.PostgresConnector",
+    "tasks.max": "1",
+    "database.hostname": "postgres",
+    "database.port": "5432",
+    "database.user": "cdc",
+    "database.password": "${env:CDC_PASSWORD}",
+    "database.dbname": "shop",
+    "plugin.name": "pgoutput",
+    "topic.prefix": "cdc",
+    "slot.name": "cdc_orders_slot",
+    "publication.name": "cdc_orders_pub",
+    "publication.autocreate.mode": "filtered",
+    "schema.include.list": "shop",
+    "table.include.list": "shop.orders,shop.dbz_heartbeat",
+    "snapshot.mode": "initial",
+    "decimal.handling.mode": "double",
+    "tombstones.on.delete": "true",
+    "heartbeat.interval.ms": "10000",
+    "heartbeat.action.query": "UPDATE shop.dbz_heartbeat SET ts = now() WHERE id = 1",
+    "topic.creation.default.partitions": "1",
+    "topic.creation.default.replication.factor": "1",
+    "key.converter": "org.apache.kafka.connect.json.JsonConverter",
+    "value.converter": "org.apache.kafka.connect.json.JsonConverter",
+    "key.converter.schemas.enable": "false",
+    "value.converter.schemas.enable": "false"
+  }
+}

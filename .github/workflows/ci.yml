@@ -1,0 +1,48 @@
+name: Checks
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      integration:
+        description: Build Docker stack and run end-to-end CDC verification
+        type: boolean
+        default: false
+
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m unittest discover -s tests -v
+      - run: python -m compileall -q cdc_pipeline cdc.py
+      - run: python cdc.py init
+      - run: docker compose config --quiet
+  integration:
+    if: github.event_name == 'workflow_dispatch' && inputs.integration
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python cdc.py init
+      - run: python cdc.py up
+      - run: python cdc.py verify
+      - run: python cdc.py replay --compare
+      - name: Capture logs
+        if: always()
+        run: |
+          mkdir -p artifacts
+          docker compose logs --no-color > artifacts/compose.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: cdc-verification
+          path: artifacts/
+      - if: always()
+        run: docker compose --profile tools down --volumes

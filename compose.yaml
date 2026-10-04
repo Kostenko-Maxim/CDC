@@ -1,0 +1,140 @@
+name: cdc-portfolio
+
+x-app: &app
+  build:
+    context: .
+    dockerfile: docker/tools/Dockerfile
+  environment: &app-env
+    PGHOST: postgres
+    PGPORT: 5432
+    PGDATABASE: shop
+    PGUSER: cdc
+    PGPASSWORD: ${CDC_PASSWORD:?Create .env from .env.example}
+    CONNECT_URL: http://connect:8083
+    KAFKA_BOOTSTRAP: kafka:29092
+    S3_ENDPOINT: http://minio:9000
+    AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER:?Create .env}
+    AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:?Create .env}
+    S3_BUCKET: ${S3_BUCKET:-cdc-lake}
+    GENERATOR_RATE: ${GENERATOR_RATE:-2}
+
+services:
+  postgres:
+    image: postgres:17.4-bookworm
+    environment:
+      POSTGRES_DB: shop
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Create .env}
+      CDC_PASSWORD: ${CDC_PASSWORD:?Create .env}
+    command: [postgres, -c, wal_level=logical, -c, max_replication_slots=10, -c, max_wal_senders=10, -c, max_slot_wal_keep_size=1GB]
+    ports: ["127.0.0.1:${POSTGRES_PORT:-5432}:5432"]
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./sql/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -h 127.0.0.1 -U postgres -d shop"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+
+  kafka:
+    image: apache/kafka:4.1.1
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: INTERNAL://:29092,EXTERNAL://:9092,CONTROLLER://:29093
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:29092,EXTERNAL://localhost:${KAFKA_PORT:-9092}
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:29093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+      KAFKA_LOG_RETENTION_HOURS: 168
+      KAFKA_LOG_CLEANER_BACKOFF_MS: 1000
+      # Disable the prebuilt JVM class archive for reliable Docker Desktop startup.
+      KAFKA_JVM_PERFORMANCE_OPTS: -Xshare:off
+      CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
+    ports: ["127.0.0.1:${KAFKA_PORT:-9092}:9092"]
+    volumes: [kafka-data:/var/lib/kafka/data]
+    healthcheck:
+      test: [CMD-SHELL, "/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:29092 --list > /dev/null"]
+      interval: 10s
+      timeout: 10s
+      retries: 30
+    restart: unless-stopped
+
+  connect:
+    build:
+      context: docker/connect
+    environment:
+      CDC_PASSWORD: ${CDC_PASSWORD:?Create .env}
+      AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER:?Create .env}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:?Create .env}
+      KAFKA_HEAP_OPTS: -Xms256m -Xmx1g
+    ports: ["127.0.0.1:${CONNECT_PORT:-8083}:8083"]
+    depends_on:
+      postgres: {condition: service_healthy}
+      kafka: {condition: service_healthy}
+    healthcheck:
+      test: [CMD-SHELL, "curl -fsS http://localhost:8083/connectors > /dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 40
+    restart: unless-stopped
+
+  minio:
+    build:
+      context: docker/minio
+    command: server /data --console-address :9001
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?Create .env}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?Create .env}
+    ports:
+      - "127.0.0.1:${MINIO_API_PORT:-9000}:9000"
+      - "127.0.0.1:${MINIO_CONSOLE_PORT:-9001}:9001"
+    volumes: [minio-data:/data]
+    healthcheck:
+      test: [CMD, curl, -f, http://localhost:9000/minio/health/live]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+
+  kafka-ui:
+    image: ghcr.io/kafbat/kafka-ui:v1.3.0
+    environment:
+      KAFKA_CLUSTERS_0_NAME: cdc-local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
+      KAFKA_CLUSTERS_0_KAFKACONNECT_0_NAME: connect
+      KAFKA_CLUSTERS_0_KAFKACONNECT_0_ADDRESS: http://connect:8083
+      KAFKA_CLUSTERS_0_READONLY: "true"
+    ports: ["127.0.0.1:${KAFKA_UI_PORT:-8080}:8080"]
+    depends_on:
+      kafka: {condition: service_healthy}
+      connect: {condition: service_healthy}
+    restart: unless-stopped
+
+  generator:
+    <<: *app
+    command: [generate]
+    depends_on:
+      postgres: {condition: service_healthy}
+    restart: unless-stopped
+
+  tools:
+    <<: *app
+    profiles: [tools]
+    volumes:
+      - ./artifacts:/artifacts
+      - ./connectors:/app/connectors:ro
+
+volumes:
+  postgres-data:
+  kafka-data:
+  minio-data:

@@ -1,0 +1,6 @@
+{
+  "unique_product_keys": 100,
+  "exported_records": 101,
+  "last_observed_offset": 3134,
+  "note": "Compaction is asynchronous; offset gaps are preserved."
+}

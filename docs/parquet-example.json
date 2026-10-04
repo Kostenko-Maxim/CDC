@@ -1,0 +1,5 @@
+{
+  "file": "cdc-pq.shop.orders/0/00000000000000000000.parquet",
+  "rows": 652,
+  "schema": "order_id: int64 not null\ncustomer_id: int32 not null\nproduct_id: int32 not null\nquantity: int32 not null\namount: double not null\nstatus: string not null\ncreated_at: string not null\nupdated_at: string not null\nchannel: string not null\n-- schema metadata --\nparquet.avro.schema: '{\"type\":\"record\",\"name\":\"Value\",\"namespace\":\"cdc-pq' + 814\nwriter.model.name: 'avro'"
+}
